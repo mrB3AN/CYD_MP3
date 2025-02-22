@@ -17,7 +17,7 @@ void setup() {
   delay(1000);
 
 
-  if (!SD.begin(SD_CS_PIN, SPI, 20000000)) {
+  if (!SD.begin(SD_CS_PIN, SPI, 80000000)) {
     Serial.println("[SD] Card mount failed!");
     while (true) { delay(1000); }
   }
