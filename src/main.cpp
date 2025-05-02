@@ -4,6 +4,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <vector>
+#include <driver/i2s.h>
 
 #include "Audio.h"
 #include "FS.h"
@@ -15,10 +16,11 @@
 #include <freertos/task.h>
 
 /************************* AUDIO ******************************/
-Audio audio(true, I2S_DAC_CHANNEL_LEFT_EN);
-#define SD_CS_PIN 5
-// Use HSPI for the SD card to isolate from VSPI (display + touch)
-SPIClass sdSPI(HSPI);
+Audio audio(false, I2S_DAC_CHANNEL_DISABLE, I2S_NUM_0);  // External DAC
+
+#define SD_CS_PIN 5  // SD card CS pin
+
+SPIClass sdSPI(HSPI);  // Use HSPI for the SD card to isolate from VSPI (display + touch)
 
 std::vector<String> fileList;
 int currentSongIndex = 0;
@@ -171,11 +173,21 @@ void setup() {
   Serial.println("Screen Setup done");
 
   delay(5000);
-  Serial.println("Starting...");
+  Serial.println("Starting Audio...");
   delay(1000);
 
+  /*
+  i2s_pin_config_t myPins = {
+    .bck_io_num = 4,     // BCLK (Bit Clock)
+    .ws_io_num = 22,     // LRCK (Left/Right Clock), also called WS (Word Select)
+    .data_out_num = 27,  // DATA Out
+    .data_in_num = -1    // Not used
+  };
+  i2s_set_pin(I2S_NUM_0, &myPins); // Set the I2S pins for I2S_NUM_0
+  */
+
   // Initialize HSPI for SD card
-  sdSPI.begin(18, 19, 23, SD_CS_PIN);
+  sdSPI.begin(18, 19, 23, SD_CS_PIN);  //replace with defines
 
   // Mount SD on HSPI
   if (!SD.begin(SD_CS_PIN, sdSPI, 25000000)) {
@@ -189,6 +201,8 @@ void setup() {
 
   playlistSize = fileList.size();
   audio.forceMono(false);
+  // Set I2S Pins: BCLK (Bit Clock), LRCK (Left/Right Clock), also called WS (Word Select), DATA Out
+  audio.setPinout(4, 22, 27); // replace with defines
   audio.setVolume(1);
 
   if (!fileList.empty()) {
@@ -203,7 +217,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     guiTask,          // entry function
     "LVGL",           // debug name
-    8 * 1024,         // 8 KB stack 
+    8 * 1024,         // 8 KB stack, recomended minimum by LVGL 
     nullptr,          // no parameters
     1,                // priority 1
     nullptr,          // on’t need the task handle
@@ -223,6 +237,5 @@ void setup() {
 }
 
 void loop() {
-  // Idle; tasks handle GUI and audio
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  // Tasks are running in the background
 }
