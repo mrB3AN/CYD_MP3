@@ -9,9 +9,20 @@ extern "C" {
 
 typedef struct _objects_t {
     lv_obj_t *main;
-    lv_obj_t *song_label;
-    lv_obj_t *prev;
-    lv_obj_t *next;
+    lv_obj_t *obj0;
+    lv_obj_t *song_header;
+    lv_obj_t *song_title;
+    lv_obj_t *play_pause_butt;
+    lv_obj_t *pp_butt_label;
+    lv_obj_t *next_butt;
+    lv_obj_t *next_butt_label;
+    lv_obj_t *prev_butt;
+    lv_obj_t *prev_butt_label;
+    lv_obj_t *volume_label;
+    lv_obj_t *volume_up_butt;
+    lv_obj_t *vup_label;
+    lv_obj_t *volume_down_butt;
+    lv_obj_t *vdown_label;
 } objects_t;
 
 extern objects_t objects;
@@ -26,8 +37,6 @@ void tick_screen_main();
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);
 
-void next_button_event_cb(lv_event_t *e);
-void prev_button_event_cb(lv_event_t *e);
 void create_screens();
 
 

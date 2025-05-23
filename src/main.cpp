@@ -26,6 +26,18 @@ std::vector<String> fileList;
 int currentSongIndex = 0;
 int playlistSize = 0;
 
+// 1-byte commands for audio control
+enum AudioCommand : uint8_t {
+  CMD_PLAY_PAUSE,
+  CMD_NEXT,
+  CMD_PREV,
+  CMD_VOL_UP,
+  CMD_VOL_DOWN
+};
+
+// Queue for audio commands 
+QueueHandle_t audioCmdQ = nullptr;
+
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels, std::vector<String> &fileList) {
   File root = fs.open(dirname);
   if (!root || !root.isDirectory()) {
@@ -39,6 +51,7 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels, std::vector<Strin
   }
 }
 
+// End of mp3
 void audio_eof_mp3(const char* info) {
   Serial.println("[Audio] Song finished!");
   currentSongIndex++;
@@ -68,7 +81,7 @@ TFT_eSPI tft = TFT_eSPI(screenWidth, screenHeight);
 
 SPIClass tsSpi = SPIClass(VSPI);
 XPT2046_Touchscreen ts(XPT2046_CS, XPT2046_IRQ);
-uint16_t touchScreenMinimumX = 200, touchScreenMaximumX = 3700, touchScreenMinimumY = 240, touchScreenMaximumY = 3800;
+uint16_t touchScreenMinimumX = 150, touchScreenMaximumX = 3700, touchScreenMinimumY = 300, touchScreenMaximumY = 3900;
 
 /* Display flushing */
 void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *pixelmap) {
@@ -85,14 +98,21 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *pixelmap)
   lv_disp_flush_ready(disp);
 }
 
-/*========== Read touchscreen input ==========*/
+/* Read touchscreen input */
 void my_touch_read(lv_indev_t *indev_drv, lv_indev_data_t *data) {
   if (ts.touched()) {
     TS_Point p = ts.getPoint();
+
+    // Offset to shift the touch input for fine tuning
+    const int16_t xOffset = 200; 
+    p.x -= xOffset;
+
+    // Ensure the adjusted value stays within bounds
     if (p.x < touchScreenMinimumX) touchScreenMinimumX = p.x;
     if (p.x > touchScreenMaximumX) touchScreenMaximumX = p.x;
     if (p.y < touchScreenMinimumY) touchScreenMinimumY = p.y;
     if (p.y > touchScreenMaximumY) touchScreenMaximumY = p.y;
+
     data->point.x = map(p.x, touchScreenMinimumX, touchScreenMaximumX, 1, screenWidth);
     data->point.y = map(p.y, touchScreenMinimumY, touchScreenMaximumY, 1, screenHeight);
     data->state = LV_INDEV_STATE_PR;
@@ -100,27 +120,49 @@ void my_touch_read(lv_indev_t *indev_drv, lv_indev_data_t *data) {
     data->state = LV_INDEV_STATE_REL;
   }
 }
+
 /*Set tick routine needed for LVGL internal timings*/
 static uint32_t my_tick_get_cb(void) { return millis(); }
 
 
 static int counter = 0;
 
-// Button event callbacks
-void next_button_event_cb(lv_event_t *e) {
-  counter++;
-  char counter_text[16];
-  snprintf(counter_text, sizeof(counter_text), "Count: %d", counter);
-  lv_label_set_text(objects.song_label, counter_text);
-}
+extern "C" {
+  // Button event callbacks
+  void action_volume_up(lv_event_t *e) {
+    counter++;
+    char counter_text[16];
+    snprintf(counter_text, sizeof(counter_text), "Count: %d", counter);
+    lv_label_set_text(objects.song_title, counter_text);
 
-void prev_button_event_cb(lv_event_t *e) {
-  counter--;
-  char counter_text[16];
-  snprintf(counter_text, sizeof(counter_text), "Count: %d", counter);
-  lv_label_set_text(objects.song_label, counter_text);
-}
+    //audio.setVolume(min(22, audio.getVolume() + 1));
+    AudioCommand cmd = CMD_VOL_UP;
+    xQueueSend(audioCmdQ, &cmd, /*ticksToWait=*/ 0);
+  }
 
+  void action_volume_down(lv_event_t *e) {
+    counter--;
+    char counter_text[16];
+    snprintf(counter_text, sizeof(counter_text), "Count: %d", counter);
+    lv_label_set_text(objects.song_title, counter_text);
+
+    //audio.setVolume(max(0, audio.getVolume() - 1));
+    AudioCommand cmd = CMD_VOL_DOWN;
+    xQueueSend(audioCmdQ, &cmd, 0);
+  }
+
+  void action_next_song(lv_event_t * e){
+  
+  };
+
+  void action_play_pause_song(lv_event_t * e){
+
+  };
+
+  void action_prev_song(lv_event_t * e){
+
+  };
+}
 
 /*********************** FREERTOS ********************************/
 void guiTask(void *pv) {
@@ -130,9 +172,37 @@ void guiTask(void *pv) {
   }
 }
 
-void audioTask(void *pv) {
+void audioTask(void* pv) {
+  AudioCommand cmd;
   for (;;) {
+    
+    // 1) Check if there’s any command waiting
+    while (xQueueReceive(audioCmdQ, &cmd, 0) == pdTRUE) {
+      switch (cmd) {
+        case CMD_PLAY_PAUSE:
+          // replace with actual audio play/pause calls
+          
+          break;
+        case CMD_NEXT:
+          // reuse existing end-of-file handler
+          
+          break;
+        case CMD_PREV:
+          
+          break;
+        case CMD_VOL_UP:
+          audio.setVolume(min(22, audio.getVolume() + 1));
+          break;
+        case CMD_VOL_DOWN:
+          audio.setVolume(max(0, audio.getVolume() - 1));
+          break;
+      }
+    }
+
+    // 2) Always keep the audio engine pumping
     audio.loop();
+
+    // 3) Yield for a bit
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
@@ -211,6 +281,15 @@ void setup() {
     if (!ok) Serial.println("[Audio] Could not open file!");
   } else {
     Serial.println("[SD] No audio files found.");
+  }
+
+  audioCmdQ = xQueueCreate(10, sizeof(AudioCommand));
+  if (!audioCmdQ) {
+    Serial.println("Audio command queue creation failed!");
+    // Stop here to avoid running without a queue
+    while (true) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+    }
   }
 
   // Create GUI task pinned to core 1

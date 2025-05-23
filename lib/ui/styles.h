@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+// Style: Dark
+void add_style_dark(lv_obj_t *obj);
+void remove_style_dark(lv_obj_t *obj);
+
 
 
 #ifdef __cplusplus
